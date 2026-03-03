@@ -1,1 +1,58 @@
 
+name: Deploy Node App to Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+
+            APP_DIR="/var/www/dating-app"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+            BRANCH="${{ github.ref_name }}"
+
+            echo "Deploying branch: $BRANCH"
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone -b $BRANCH $REPO_URL $APP_DIR
+            fi
+
+            cd $APP_DIR
+            git fetch origin
+            git checkout $BRANCH
+            git pull origin $BRANCH
+
+            npm install
+
+            if [ -f "server.js" ]; then
+              ENTRY="server.js"
+            elif [ -f "app.js" ]; then
+              ENTRY="app.js"
+            elif [ -f "index.js" ]; then
+              ENTRY="index.js"
+            else
+              echo "No entry file found!"
+              exit 1
+            fi
+
+            if pm2 describe dating-app > /dev/null; then
+              pm2 restart dating-app
+            else
+              pm2 start $ENTRY --name "dating-app"
+            fi
+
+            pm2 save
+
+            echo "Deployment Successful!"
